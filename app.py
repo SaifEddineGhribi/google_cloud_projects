@@ -14,6 +14,7 @@ from flask import Flask, jsonify, render_template, request
 from google import genai
 from google.genai import types
 from pypdf import PdfReader
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 load_dotenv()
 app = Flask(__name__)
@@ -37,6 +38,25 @@ def client() -> genai.Client:
     if not PROJECT:
         raise RuntimeError("GOOGLE_CLOUD_PROJECT is not set.")
     return genai.Client(vertexai=True, project=PROJECT, location=LOCATION)
+
+
+def _is_permission_denied(exc: BaseException) -> bool:
+    """True for 403 PERMISSION_DENIED (intermittent trial-account throttling)."""
+    return getattr(exc, "code", None) == 403
+
+
+@retry(
+    retry=retry_if_exception(_is_permission_denied),
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=1, max=8),
+    reraise=True,
+)
+def generate_with_retry(genai_client: genai.Client, prompt: str, temperature: float, max_tokens: int):
+    """Generate content, retrying on intermittent 403s from the trial account."""
+    return genai_client.models.generate_content(
+        model=MODEL, contents=prompt,
+        config=types.GenerateContentConfig(temperature=temperature, max_output_tokens=max_tokens),
+    )
 
 
 def extract_pages(pdf_path: Path) -> list[tuple[int, str]]:
@@ -78,10 +98,7 @@ Question: {question}
 Assigned pages:
 {document_slice}"""
     genai_client = client()
-    response = genai_client.models.generate_content(
-        model=MODEL, contents=prompt,
-        config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=900),
-    )
+    response = generate_with_retry(genai_client, prompt, 0.1, 900)
     return Finding(chunk_number, page_label(pages), response.text or "NO_RELEVANT_EVIDENCE")
 
 
@@ -97,10 +114,7 @@ Question: {question}
 Worker notes:
 {evidence}"""
     genai_client = client()
-    response = genai_client.models.generate_content(
-        model=MODEL, contents=prompt,
-        config=types.GenerateContentConfig(temperature=0.2, max_output_tokens=1400),
-    )
+    response = generate_with_retry(genai_client, prompt, 0.2, 1400)
     return response.text or "The coordinator returned no answer."
 
 
@@ -138,4 +152,4 @@ def ask():
 
 
 if __name__ == "__main__":
-    app.run(debug=os.getenv("FLASK_DEBUG") == "1", port=8080)
+    app.run(debug=os.getenv("FLASK_DEBUG") == "1", port=8082)
