@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Parallel PDF Search</title><link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}"></head>
+<body><main><p class="eyebrow">VERTEX AI · MULTI-AGENT DEMO</p><h1>Ask a large PDF,<br>in parallel.</h1><p class="intro">Workers inspect separate page groups, then a coordinator synthesizes an evidence-grounded response.</p>
+<form id="ask-form"><label>PDF document<input id="document" name="document" type="file" accept="application/pdf" required></label><label>Your question<textarea name="question" required maxlength="1000" placeholder="What are the key risks described in this document?"></textarea></label><label>Parallel workers <span id="worker-value">4</span><input id="workers" name="workers" type="range" min="2" max="{{ max_workers }}" value="4"></label><button>Search the document <span>→</span></button></form>
+<section id="status" hidden></section><section id="result" hidden><p class="eyebrow">COORDINATOR ANSWER</p><article id="answer"></article><details><summary>Inspect worker evidence</summary><div id="findings"></div></details></section>
+<footer>Model: {{ model }} · Auth: Application Default Credentials</footer></main><script src="{{ url_for('static', filename='app.js') }}"></script></body></html>
